@@ -1,31 +1,15 @@
 version: '3'
 
 services:
-  mongo:
-    image: mongo:latest
-    restart: always
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: apibara
-      MONGO_INITDB_ROOT_PASSWORD: apibara
-    ports:
-    - 27017:27017
-    volumes:
-    - mongo-data:/data/db
-
   indexer:
     build:
       context: .
       dockerfile: Dockerfile
     restart: always
-    command:
-    - start
-    - --mongo-url
-    - "mongodb://apibara:apibara@mongo:27017"
+    command : start 
     environment:
       PYTHONUNBUFFERED: "1"
       DNA_TOKEN: ${DNA_TOKEN}
-    links:
-    - mongo
-
-volumes:
-  mongo-data:
+      MONGODB_URL: ${MONGODB_URL}  # Ensure this is your MongoDB Atlas connection string
+      DATABASE_NAME: ${DATABASE_NAME}
+      COLLECTION_NAME: ${COLLECTION_NAME}

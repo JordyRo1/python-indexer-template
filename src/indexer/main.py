@@ -3,13 +3,14 @@
 import asyncio
 from functools import wraps
 import os
-
+from dotenv import load_dotenv
 import click
 
 from indexer.indexer import run_indexer
-
+load_dotenv()
 
 DNA_TOKEN = os.environ.get("DNA_TOKEN")
+MONGODB_URL = os.environ.get("MONGODB_URL")
 
 def async_command(f):
     @wraps(f)
@@ -32,9 +33,10 @@ def cli():
 async def start(server_url, mongo_url, restart):
     """Start the Apibara indexer."""
     if server_url is None:
-        server_url = "mainnet.starknet.a5a.ch"
+        server_url = os.getenv("SERVER_URL")
     if mongo_url is None:
-        mongo_url = "mongodb://apibara:apibara@localhost:27017"
+        mongo_url = MONGODB_URL
+        # mongo_url = "mongodb://apibara:apibara@localhost:27017"
 
     print("Starting Apibara indexer...")
     print(f"   Server url: {server_url}")

@@ -3,9 +3,16 @@ import logging
 from apibara.indexer import IndexerRunner, IndexerRunnerConfiguration, Info
 from apibara.indexer.indexer import IndexerConfiguration
 from apibara.protocol.proto.stream_pb2 import Cursor, DataFinality
-from apibara.starknet import EventFilter, Filter, StarkNetIndexer, felt
+from apibara.starknet import EventFilter, Filter, StarkNetIndexer, felt, TransactionFilter
 from apibara.starknet.cursor import starknet_cursor
 from apibara.starknet.proto.starknet_pb2 import Block
+from pymongo import MongoClient
+from dotenv import load_dotenv
+import os 
+
+
+load_dotenv()
+
 
 # Print apibara logs
 root_logger = logging.getLogger("apibara")
@@ -13,29 +20,41 @@ root_logger = logging.getLogger("apibara")
 root_logger.setLevel(logging.INFO)
 root_logger.addHandler(logging.StreamHandler())
 
-briqs_address = felt.from_hex(
-    "0x01435498bf393da86b4733b9264a86b58a42b31f8d8b8ba309593e5c17847672"
+randomness_address = felt.from_hex(
+    "0x71659c6e691800b9f0d700ea5a96f0dd8f8c5bcf13d91c045853b3699cc7d45"
 )
 
 # `Transfer` selector.
 # You can get this value either with starknet.py's `ContractFunction.get_selector`
 # or from starkscan.
 transfer_key = felt.from_hex(
-    "0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9"
+    "0x8a1691d2b9d5e93bc2e52eae31be1c5ace6a80c2a45b3e7e77a64a11f22ecb"
 )
 
+# tx_hash = felt.from_hex(
+#     "0xd52dbd0fb027286fa0e116d9f20f71da4a236168d8e56dd6db45c72c984f50"
+# )
 
-class BriqIndexer(StarkNetIndexer):
+
+
+class RandomnessIndexer(StarkNetIndexer):
+    def __init__(self):
+        super().__init__() 
+        # Initialize MongoDB Client
+        self.client = MongoClient(os.getenv("MONGODB_URL"))
+        self.db = self.client[os.getenv("DATABASE_NAME")]
+        self.collection = self.db[os.getenv("COLLECTION_NAME")]
+
     def indexer_id(self) -> str:
-        return "starknet-example"
+        return "randomness_indexer"
 
     def initial_configuration(self) -> Filter:
         # Return initial configuration of the indexer.
         return IndexerConfiguration(
             filter=Filter().add_event(
-                EventFilter().with_from_address(briqs_address).with_keys([transfer_key])
+                EventFilter().with_from_address(randomness_address).with_keys([transfer_key])
             ),
-            starting_cursor=starknet_cursor(10_000),
+            starting_cursor=starknet_cursor(7000),
             finality=DataFinality.DATA_STATUS_ACCEPTED,
         )
 
@@ -44,17 +63,17 @@ class BriqIndexer(StarkNetIndexer):
         for event_with_tx in data.events:
             tx_hash = felt.to_hex(event_with_tx.transaction.meta.hash)
             event = event_with_tx.event
-
-            from_addr = felt.to_hex(event.data[0])
-            to_addr = felt.to_hex(event.data[1])
-            token_id = felt.to_int(event.data[2]) + (felt.to_int(event.data[3]) << 128)
-            print("Transfer")
-            print(f"   Tx Hash: {tx_hash}")
-            print(f"      From: {from_addr}")
-            print(f"        To: {to_addr}")
-            print(f"  Token ID: {token_id}")
-            print()
-
+            document = {"tx_hash": tx_hash, 
+                        "request_id": felt.to_hex(event.data[0]),
+                        "requestor_address": felt.to_hex(event.data[1]),
+                        "seed": hex(felt.to_int(event.data[2])),
+                        "minimum_block_number": hex(felt.to_int(event.data[3])),
+                        "random_words": hex(felt.to_int(event.data[5])),
+                        "proof": [hex(felt.to_int(event.data[7])),hex(felt.to_int(event.data[8])), hex(felt.to_int(event.data[9]))]
+                        }
+            self.collection.insert_one(document)
+            print(document)
+    
     async def handle_invalidate(self, _info: Info, _cursor: Cursor):
         raise ValueError("data must be finalized")
 
@@ -68,6 +87,5 @@ async def run_indexer(server_url=None, mongo_url=None, restart=None, dna_token=N
         ),
         reset_state=restart,
     )
-
     # ctx can be accessed by the callbacks in `info`.
-    await runner.run(BriqIndexer(), ctx={"network": "starknet-mainnet"})
+    await runner.run(RandomnessIndexer(), ctx={"network": "starknet-sepolia"})
